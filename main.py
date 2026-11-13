@@ -1,3 +1,5 @@
+from flask import Flask
+from threading import Thread
 import os
 import re
 import json
@@ -10,11 +12,29 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-TOKEN = ""
+# السيرفر الوهمي عشان UptimeRobot
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "I am alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# تشغيل السيرفر
+keep_alive()
+
+TOKEN = os.getenv("TOKEN")
 DATA_FILE = "DeaTh_system_data.json"
 PREFIX = "!"
 MEMBER_ROLE_NAME = "DeaTh"
 TICKET_CATEGORY_NAME = "tickets"
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("death")
