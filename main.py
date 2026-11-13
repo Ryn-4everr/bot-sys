@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-# السيرفر الوهمي عشان UptimeRobot
+# السيرفر الوهمي لتجنب مشكلة الـ Timed Out
 app = Flask('')
 
 @app.route('/')
@@ -20,13 +20,13 @@ def home():
     return "I am alive!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# تشغيل السيرفر
 keep_alive()
 
 TOKEN = os.getenv("TOKEN")
@@ -34,6 +34,7 @@ DATA_FILE = "DeaTh_system_data.json"
 PREFIX = "!"
 MEMBER_ROLE_NAME = "DeaTh"
 TICKET_CATEGORY_NAME = "tickets"
+
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
