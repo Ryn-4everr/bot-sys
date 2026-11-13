@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-TOKEN = ""
+TOKEN = "MTU2ODE4ODcyNDkzNDg3MzE3OA.GuqPoD.DE2Ae44nglylOcTpD3HXUI5qyNBMxcEtXZpwTk"
 DATA_FILE = "DeaTh_system_data.json"
 PREFIX = "!"
 MEMBER_ROLE_NAME = "DeaTh"
