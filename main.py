@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-TOKEN = "MTU2ODE4ODcyNDkzNDg3MzE3OA.GuqPoD.DE2Ae44nglylOcTpD3HXUI5qyNBMxcEtXZpwTk"
+TOKEN = ""
 DATA_FILE = "DeaTh_system_data.json"
 PREFIX = "!"
 MEMBER_ROLE_NAME = "DeaTh"
@@ -3062,7 +3062,8 @@ bot.tree.add_command(set_slash)
 # ---------- Start bot ----------
 
 async def main():
-    token = TOKEN
+    token = os.getenv("DISCORD_TOKEN")
+
 
     if not token:
         raise RuntimeError("ضع توكن البوت في متغير TOKEN.")
