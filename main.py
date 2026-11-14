@@ -667,7 +667,7 @@ def member_embed(member):
 
     e = discord.Embed(title="ملف العضو", color=0x5865F2)
     e.add_field(name="العضو", value=f"{member.mention}\n`{member}`", inline=True)
-    e.add_field(name="ID", value=f"`{member.id}`", inline=True)
+    e.add_field(name="ID", value=`{member.id}`, inline=True)
     e.add_field(
         name="انضم",
         value=discord.utils.format_dt(member.joined_at, style="R") if member.joined_at else "غير معروف",
@@ -1968,7 +1968,7 @@ async def do_chat_mute(ctx, member, minutes, reason, mute):
     except discord.HTTPException:
         await ctx.reply("تعذر تطبيق الميوت الكتابي.", mention_author=False)
 
-@bot.command(name="mute", aliases=["m", "اص", "ميوت"])
+@bot.command(name="mute", aliases=["m", "اص"])
 async def mute_member(ctx, member: str = None, minutes: int = None, *, reason="بدون سبب"):
     if member and member.isdigit() and ctx.message.reference and minutes is None:
         minutes = int(member)
@@ -1979,6 +1979,11 @@ async def mute_member(ctx, member: str = None, minutes: int = None, *, reason="�
     if minutes is not None and not 1 <= minutes <= 40320:
         return await ctx.reply("حدد مدة بين دقيقة و40320 دقيقة.", mention_author=False)
     await do_chat_mute(ctx, target, minutes, reason, True)
+
+# أمر مستقل لحل مشكلة الحروف العربية في أوامر البوت
+@bot.command(name="ميوت")
+async def arabic_mute(ctx, member: str = None, minutes: int = None, *, reason="بدون سبب"):
+    await mute_member(ctx, member=member, minutes=minutes, reason=reason)
 
 @bot.command(name="unmute", aliases=["um", "تكلم"])
 async def unmute_member(ctx, member: str = None):
