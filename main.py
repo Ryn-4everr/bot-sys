@@ -667,7 +667,7 @@ def member_embed(member):
 
     e = discord.Embed(title="ملف العضو", color=0x5865F2)
     e.add_field(name="العضو", value=f"{member.mention}\n`{member}`", inline=True)
-    e.add_field(name="ID", value=`{member.id}`, inline=True)
+    e.add_field(name="ID", value=f"{member.id}", inline=True)
     e.add_field(
         name="انضم",
         value=discord.utils.format_dt(member.joined_at, style="R") if member.joined_at else "غير معروف",
