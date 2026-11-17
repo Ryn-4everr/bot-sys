@@ -5,6 +5,9 @@ import asyncio
 import logging
 import unicodedata
 from datetime import timedelta
+import base64
+import urllib.request
+import urllib.error
 
 import discord
 from discord.ext import commands
@@ -37,6 +40,11 @@ PREFIX = "!"
 MEMBER_ROLE_NAME = "DeaTh"
 TICKET_CATEGORY_NAME = "tickets"
 
+# --- إعدادات ربط جيت هاب لحفظ البيانات سحابياً ---
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GITHUB_REPO = os.getenv("GITHUB_REPO")  # مثال: username/repository
+GITHUB_PATH = os.getenv("GITHUB_PATH", DATA_FILE)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("death")
 
@@ -64,6 +72,25 @@ LOG_NAMES = {
 }
 
 def load_data():
+    global data
+    if GITHUB_TOKEN and GITHUB_REPO:
+        try:
+            url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
+            req = urllib.request.Request(url, headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json"
+            })
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
+                file_content = base64.b64decode(res_data["content"]).decode("utf-8")
+                saved = json.loads(file_content)
+                for key in data:
+                    if isinstance(saved.get(key), dict):
+                        data[key] = saved[key]
+                return
+        except Exception:
+            log.exception("تعذر تحميل البيانات من جيت هاب، جاري المحاولة محلياً")
+
     if not os.path.exists(DATA_FILE):
         return
     try:
@@ -73,14 +100,45 @@ def load_data():
             if isinstance(saved.get(key), dict):
                 data[key] = saved[key]
     except (OSError, json.JSONDecodeError):
-        log.exception("تعذر تحميل ملف البيانات")
+        log.exception("تعذر تحميل ملف البيانات محلياً")
 
 def save_data():
     try:
+        json_data = json.dumps(data, ensure_ascii=False, indent=2)
+        
+        if GITHUB_TOKEN and GITHUB_REPO:
+            url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
+            sha = None
+            try:
+                req_get = urllib.request.Request(url, headers={
+                    "Authorization": f"Bearer {GITHUB_TOKEN}",
+                    "Accept": "application/vnd.github+json"
+                })
+                with urllib.request.urlopen(req_get) as resp:
+                    sha = json.loads(resp.read().decode("utf-8")).get("sha")
+            except Exception:
+                pass
+
+            content_encoded = base64.b64encode(json_data.encode("utf-8")).decode("utf-8")
+            payload = {
+                "message": "Update DeaTh system data automatically",
+                "content": content_encoded
+            }
+            if sha:
+                payload["sha"] = sha
+
+            req_put = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Content-Type": "application/json",
+                "Accept": "application/vnd.github+json"
+            }, method="PUT")
+            with urllib.request.urlopen(req_put):
+                pass
+
         with open(DATA_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.write(json_data)
         os.replace(DATA_FILE + ".tmp", DATA_FILE)
-    except OSError:
+    except Exception:
         log.exception("تعذر حفظ ملف البيانات")
 
 def is_owner(member):
@@ -304,8 +362,6 @@ async def hierarchy_check(ctx, member):
 
     return True
 
-# ---------- Role search ----------
-
 def role_search_key(value):
     value = normalize_text(str(value).strip())
     return "".join(char for char in value if char.isalnum())
@@ -401,8 +457,6 @@ async def configure_prison_access(guild):
             log.exception("تعذر ضبط صلاحيات روم السجن: %s", channel.id)
     return True
 
-# ---------- Protected words ----------
-
 ARABIC_MAP = str.maketrans({
     "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ى": "ي",
     "ؤ": "و", "ئ": "ي", "ة": "ه", "ـ": "", "۰": "0", "۱": "1",
@@ -468,8 +522,6 @@ async def filter_message(message):
 
     return True
 
-# ---------- Message logging cache ----------
-
 MESSAGE_CACHE_LIMIT = 10000
 message_cache = {}
 
@@ -525,8 +577,6 @@ def message_snapshot_text(snapshot):
 
     lines.append(f"معرّف الرسالة: `{snapshot.get('message_id', 'غير معروف')}`")
     return "\n".join(lines)
-
-# ---------- Persistent tickets ----------
 
 class TicketCloseView(discord.ui.View):
     def __init__(self):
@@ -622,8 +672,6 @@ class TicketPanelView(discord.ui.View):
 
         except discord.Forbidden:
             await interaction.followup.send("ما أقدر أنشئ التذكرة. تأكد من صلاحياتي.", ephemeral=True)
-
-# ---------- Owner panel ----------
 
 class OwnerMemberModal(discord.ui.Modal, title="البحث عن عضو"):
     member_id = discord.ui.TextInput(
@@ -889,7 +937,7 @@ class OwnerPanelView(discord.ui.View):
             return await interaction.response.send_message("السيرفر غير متاح.", ephemeral=True)
 
         roles = [r for r in reversed(guild.roles) if not r.is_default()]
-        desc = "\n".join(f"{r.mention} — `{r.id}`" for r in roles[:35]) or "لا توجد رولات."
+        desc = "\n".join(f"{r.mention} -- `{r.id}`" for r in roles[:35]) or "لا توجد رولات."
 
         await interaction.response.send_message(
             embed=discord.Embed(title="رولات السيرفر", description=desc, color=0x5865F2),
@@ -945,10 +993,8 @@ def owner_panel_embed(guild):
     e.add_field(name="السيرفر", value=guild.name, inline=True)
     e.add_field(name="الأعضاء", value=str(guild.member_count or len(guild.members)), inline=True)
     e.add_field(name="الرومات", value=str(len(guild.channels)), inline=True)
-    e.set_footer(text="Owner Only • ZeTh System")
+    e.set_footer(text="Owner Only - ZeTh System")
     return e
-
-# ---------- Bot lifecycle ----------
 
 class ZeThBot(commands.Bot):
     async def setup_hook(self):
@@ -968,8 +1014,6 @@ bot = ZeThBot(
     help_command=None,
     case_insensitive=True
 )
-
-# ---------- Events ----------
 
 async def schedule_voice_unmute(guild_id, member_id, expires_at):
     key = f"{guild_id}:{member_id}"
@@ -1249,10 +1293,10 @@ async def on_guild_role_update(before, after):
     changes = []
 
     if before.name != after.name:
-        changes.append(f"الاسم: {before.name} ← {after.name}")
+        changes.append(f"الاسم: {before.name} -- {after.name}")
 
     if before.color != after.color:
-        changes.append(f"اللون: {before.color} ← {after.color}")
+        changes.append(f"اللون: {before.color} -- {after.color}")
 
     if changes:
         await send_log(after.guild, "roles", "تعديل رتبة", f"{after.mention}\n" + "\n".join(changes))
@@ -1292,7 +1336,7 @@ async def on_guild_channel_update(before, after):
     changes = []
 
     if before.name != after.name:
-        changes.append(f"الاسم: {before.name} ← {after.name}")
+        changes.append(f"الاسم: {before.name} -- {after.name}")
 
     if getattr(before, "topic", None) != getattr(after, "topic", None):
         changes.append("تم تعديل وصف الروم.")
@@ -1326,7 +1370,7 @@ async def on_guild_update(before, after):
     changes = []
 
     if before.name != after.name:
-        changes.append(f"الاسم: {before.name} ← {after.name}")
+        changes.append(f"الاسم: {before.name} -- {after.name}")
 
     if before.icon != after.icon:
         changes.append("تم تغيير صورة السيرفر.")
@@ -1414,14 +1458,13 @@ async def on_command_error(ctx, error):
         log.exception("خطأ أمر", exc_info=error)
         await ctx.reply("صار خطأ أثناء تنفيذ الأمر.", mention_author=False)
 
-# ---------- Help ----------
-
 class HelpSelect(discord.ui.Select):
     def __init__(self):
         opts = [
             discord.SelectOption(label="الأساسية", value="main"),
             discord.SelectOption(label="الإعدادات", value="settings"),
-            discord.SelectOption(label="الحماية", value="security")
+            discord.SelectOption(label="الحماية", value="security"),
+            discord.SelectOption(label="الألعاب والأقسام", value="games")
         ]
 
         super().__init__(
@@ -1435,74 +1478,74 @@ class HelpSelect(discord.ui.Select):
         pages = {
             "main": (
                 "الأوامر الأساسية",
-                "**الرومات**\n"
-                "`!close` أو `!قفل` قفل الكتابة\n"
-                "`!open` فتح الروم\n"
-                "`!hide` إخفاء الروم\n"
-                "`!unhide` أو `!show` إظهار الروم\n"
-                "`!lockvc` و`!unlockvc` قفل/فتح فويس\n"
-                "`!lockallvc` و`!unlockallvc` قفل/فتح كل الفويسات\n"
-                "`!kickvoice تأكيد` إخراج جميع الأعضاء من الفويس\n"
-                "`!addroom <اسم>` إنشاء روم كتابي\n"
-                "`!addroom voice <اسم>` إنشاء روم صوتي\n"
-                "`!delroom #روم` حذف روم\n"
-                "`!lockserver تأكيد` و`!openserver` قفل/فتح الرومات الكتابية والصوتية\n"
-                "`!roleallremove @رول تأكيد` سحب رتبة من الجميع\n"
-                "`!slowmode [ثواني]` تحديد بطء الشات\n"
-                "`!مسح [عدد]` حذف الرسائل\n\n"
-                "**الإدارة**\n"
-                "`!برا @عضو` طرد\n"
-                "`!تل @عضو` سحب الرولات عدا ZeTh\n"
-                "`!تف` أو `!بنعالي` أو `!ban` باند\n"
-                "`!mute @عضو [دقائق]` منع الكتابة بالشات واللوكت (بدون مدة = دائم)\n"
-                "`!unmute @عضو` فك الميوت\n"
-                "`!timeout @عضو [دقائق]` تايم أوت ديسكورد\n"
-                "`!untime @عضو` فك التايم أوت\n"
-                "`!prison @عضو` سجن\n"
-                "`!unprison @عضو` فك السجن\n"
-                "`!unban ID` فك الباند\n\n"
-                "**الرولات**\n"
-                "`!رول @عضو @رول` إعطاء/سحب\n"
-                "`!رول @عضو اسم الرول` إعطاء/سحب باستخدام الاسم أو بدايته\n"
-                "`!رول @رول_قديم @رول_جديد` توزيع حسب رول\n"
-                "`!roleall @رول` إعطاء للجميع"
+                "الرومات\n"
+                "!close أو !قفل: قفل الكتابة\n"
+                "!open: فتح الروم\n"
+                "!hide: إخفاء الروم\n"
+                "!unhide أو !show: إظهار الروم\n"
+                "!lockvc و !unlockvc: قفل/فتح فويس\n"
+                "!lockallvc و !unlockallvc: قفل/فتح كل الفويسات\n"
+                "!kickvoice تأكيد: إخراج جميع الأعضاء من الفويس\n"
+                "!addroom <اسم>: إنشاء روم كتابي\n"
+                "!addroom voice <اسم>: إنشاء روم صوتي\n"
+                "!delroom #روم: حذف روم\n"
+                "!lockserver تأكيد و !openserver: قفل/فتح الرومات الكتابية والصوتية\n"
+                "!roleallremove @رول تأكيد: سحب رتبة من الجميع\n"
+                "!slowmode [ثواني]: تحديد بطء الشات\n"
+                "!مسح [عدد]: حذف الرسائل\n\n"
+                "الإدارة\n"
+                "!برا @عضو: طرد\n"
+                "!تل @عضو: سحب الرولات عدا ZeTh\n"
+                "!تف أو !بنعالي أو !ban: باند\n"
+                "!mute @عضو [دقائق]: منع الكتابة بالشات واللوكت\n"
+                "!unmute @عضو: فك الميوت\n"
+                "!timeout @عضو [دقائق]: تايم أوت ديسكورد\n"
+                "!untime @عضو: فك التايم أوت\n"
+                "!prison @عضو: سجن\n"
+                "!unprison @عضو: فك السجن\n"
+                "!unban ID: فك الباند\n\n"
+                "الرولات\n"
+                "!رول @عضو @رول: إعطاء/سحب\n"
+                "!رول @عضو اسم الرول: إعطاء/سحب باستخدام الاسم أو بدايته\n"
+                "!رول @رول_قديم @رول_جديد: توزيع حسب رول\n"
+                "!roleall @رول: إعطاء للجميع"
             ),
             "settings": (
                 "الإعدادات",
-                "`!set welcome #روم` روم الترحيب\n"
-                "`!set welcome text <النص>` نص الترحيب\n"
-                "`!set Locket #روم` تحديد روم الصور\n"
-                "`!set images role @رول` تحديد رتبة السماح بنشر الصور\n"
-                "`!set prison room #روم` تحديد روم السجن الذي يستطيع السجين الكتابة فيه\n"
-                "`!set log messages #روم` تحديد روم لوق الرسائل\n"
-                "`!set log roles #روم` تحديد روم لوق الرولات\n"
-                "`!set log channels #روم` تحديد روم لوق الرومات\n"
-                "`!set log nickname #روم` تحديد روم لوق الأسماء\n"
-                "`!set log server #روم` تحديد روم لوق السيرفر\n"
-                "`!set log admin #روم` تحديد روم لوق الإدارة\n"
-                "`!set log reset` إعادة ضبط إعدادات اللوق\n"
-                "`!status online` حالة البوت متصل\n"
-                "`!status idle` حالة البوت خامل\n"
-                "`!status dnd` حالة البوت مشغول\n"
-                "`!status invisible` إخفاء حالة البوت\n"
-                "`!activity <النص>` تغيير النشاط الظاهر للبوت\n"
-                "`!set mute role @رول` تحديد الرول الذي يحصل عليه العضو عند الميوت\n"
-                "`!set prison role @رول` رول السجن\n"
-                "`!set prison room #روم` روم السجن المسموح للسجين بالكتابة فيه\n"
-                "`!logs` عرض إعدادات اللوق\n"
-                "`/set ticket room` لوحة التكت\n"
-                "`/set staff role` إضافة رتبة إدارة\n"
-                "`!setpermission @رول kick` منح صلاحية لرتبة\n"
-                "الصلاحيات: kick, mute, ban, clear, add_role, remove_role, channels, server, voice, prison, timeout, nickname, images, words\n"
-                "`!removepermission @رول kick` سحب صلاحية من رتبة\n"
-                "`!permissions` عرض توزيع الصلاحيات"
+                "!set welcome #روم: روم الترحيب\n"
+                "!set welcome text <النص>: نص الترحيب\n"
+                "!set Locket #روم: تحديد روم الصور\n"
+                "!set images role @رول: تحديد رتبة السماح بنشر الصور\n"
+                "!set prison room #روم: تحديد روم السجن\n"
+                "!set log messages #روم: تحديد روم لوق الرسائل\n"
+                "!set log roles #روم: تحديد روم لوق الرولات\n"
+                "!set log channels #روم: تحديد روم لوق الرومات\n"
+                "!set log nickname #روم: تحديد روم لوق الأسماء\n"
+                "!set log server #روم: تحديد روم لوق السيرفر\n"
+                "!set log admin #روم: تحديد روم لوق الإدارة\n"
+                "!set log reset: إعادة ضبط إعدادات اللوق\n"
+                "!status online / idle / dnd / invisible: حالة البوت\n"
+                "!activity <النص>: تغيير النشاط الظاهر للبوت\n"
+                "!set mute role @رول: رول الميوت\n"
+                "!set prison role @رول: رول السجن\n"
+                "!logs: عرض إعدادات اللوق\n"
+                "/set ticket room: لوحة التكت\n"
+                "/set staff role: إضافة رتبة إدارة\n"
+                "!setpermission @رول kick: منح صلاحية لرتبة\n"
+                "!removepermission @رول kick: سحب صلاحية من رتبة\n"
+                "!permissions: عرض توزيع الصلاحيات"
             ),
             "security": (
                 "الحماية",
-                "`!set bad word <كلمة>` إضافة كلمة ممنوعة\n"
-                "`!set bad word remove <كلمة>` حذف كلمة\n"
-                "`!words` عرض الكلمات الممنوعة\n"
+                "!set bad word <كلمة>: إضافة كلمة ممنوعة\n"
+                "!set bad word remove <كلمة>: حذف كلمة\n"
+                "!words: عرض الكلمات الممنوعة\n"
                 "فلتر الكلمات يفحص الرسائل وتعديلاتها ويطبّع التشكيل والتطويل والرموز."
+            ),
+            "games": (
+                "الألعاب والأقسام الإضافية",
+                "الألعاب والفعاليات المتاحة في النظام:\n"
+                "جميع ألعاب التحدي والفعاليات والأنظمة البرمجية الخاصة بك مرتبطة وجاهزة للاستخدام عبر الأوامر المخصصة داخل السيرفر."
             )
         }
 
@@ -1533,8 +1576,6 @@ async def help_command(ctx):
         view=HelpView(),
         mention_author=False
     )
-
-# ---------- Channel commands ----------
 
 @bot.command(name="close", aliases=["قفل", "lock"])
 async def close_channel(ctx):
@@ -1697,8 +1738,6 @@ async def clear_messages(ctx, amount: int = 30):
 
     except discord.HTTPException:
         await ctx.reply("تعذر حذف الرسائل.", mention_author=False)
-
-# ---------- Moderation ----------
 
 async def strip_member_roles(ctx, member):
     if not await staff_check(ctx, "remove_role") or not await hierarchy_check(ctx, member):
@@ -1980,7 +2019,6 @@ async def mute_member(ctx, member: str = None, minutes: int = None, *, reason="�
         return await ctx.reply("حدد مدة بين دقيقة و40320 دقيقة.", mention_author=False)
     await do_chat_mute(ctx, target, minutes, reason, True)
 
-# أمر مستقل لحل مشكلة الحروف العربية في أوامر البوت
 @bot.command(name="ميوت")
 async def arabic_mute(ctx, member: str = None, minutes: int = None, *, reason="بدون سبب"):
     await mute_member(ctx, member=member, minutes=minutes, reason=reason)
@@ -2203,8 +2241,6 @@ async def change_nick(ctx, member: str = None, *, nickname: str = None):
     except discord.HTTPException:
         await ctx.reply("تعذر تغيير النك.", mention_author=False)
 
-# ---------- Roles ----------
-
 async def actor_can_edit(ctx, member):
     return is_owner(ctx.author) or ctx.author.top_role > member.top_role
 
@@ -2213,10 +2249,10 @@ async def toggle_role(ctx, *, targets=None):
     if not targets:
         return await ctx.reply(
             "الاستخدام:\n"
-            "`!رول @عضو @رول`\n"
-            "`!رول @عضو اسم الرول`\n"
-            "أو رد على رسالة العضو واكتب `!رول اسم الرول`\n"
-            "`!رول @رول_مصدر @رول_جديد`",
+            "!رول @عضو @رول\n"
+            "!رول @عضو اسم الرول\n"
+            "أو رد على رسالة العضو واكتب !رول اسم الرول\n"
+            "!رول @رول_مصدر @رول_جديد",
             mention_author=False
         )
 
@@ -2317,7 +2353,7 @@ async def toggle_role(ctx, *, targets=None):
 
     await ctx.reply(
         "الاستخدام غير صحيح.\n"
-        "استخدم `!رول @عضو @رول` أو `!رول @عضو اسم الرول` "
+        "استخدم !رول @عضو @رول أو !رول @عضو اسم الرول "
         "أو منشن رولين للتوزيع.",
         mention_author=False
     )
@@ -2361,8 +2397,6 @@ async def role_all(ctx, *, query=None):
     await ctx.send(
         f"انتهى التوزيع.\nنجح: `{success}` | تخطي: `{skipped}` | فشل: `{failed}`"
     )
-
-# ---------- Extended server administration ----------
 
 @bot.command(name="addroom", aliases=["اضافة_روم", "اضافهروم"])
 async def add_room(ctx, *, name):
@@ -2559,8 +2593,6 @@ async def remove_permission(ctx, role: discord.Role, permission: str):
     save_data()
     await ctx.reply(f"تم سحب صلاحية {PERMISSION_NAMES[key]} من {role.mention}.", mention_author=False)
 
-# ---------- Words, owner commands ----------
-
 @bot.command(name="words", aliases=["كلمات"])
 async def list_words(ctx):
     if not await staff_check(ctx, "words"):
@@ -2588,7 +2620,7 @@ async def set_bot_status(ctx, status: str):
     value = aliases.get(status.strip().casefold())
     if value is None:
         return await ctx.reply(
-            "الحالات المتاحة: `online` أو `idle` أو `dnd` أو `invisible`.",
+            "الحالات المتاحة: online أو idle أو dnd أو invisible.",
             mention_author=False
         )
 
@@ -2674,8 +2706,6 @@ async def control_panel(interaction):
             "افتح الخاص من إعدادات السيرفر حتى أرسل اللوحة.",
             ephemeral=True
         )
-
-# ---------- Prefix settings ----------
 
 @commands.group(name="set", aliases=["ضبط"], invoke_without_command=True)
 async def set_group(ctx):
@@ -2768,8 +2798,8 @@ async def show_logs(ctx):
 
     settings = log_settings(ctx.guild)
     lines = [
-        "إعدادات لوقات DeaTh",
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "اعدادات لوقات DeaTh",
+        "------------------------------",
         "الأقسام",
         ""
     ]
@@ -2783,7 +2813,7 @@ async def show_logs(ctx):
             ""
         ])
 
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("------------------------------")
     await ctx.reply("\n".join(lines), mention_author=False)
 
 @set_group.command(name="permission", aliases=["صلاحية"])
@@ -2917,8 +2947,6 @@ async def set_prison_role(ctx, role: discord.Role):
 
 bot.add_command(set_group)
 
-# ---------- Slash settings ----------
-
 set_slash = app_commands.Group(name="set", description="إعدادات ZeTh")
 ticket_slash = app_commands.Group(name="ticket", description="إعدادات التكت")
 staff_slash = app_commands.Group(name="staff", description="إعدادات الإدارة")
@@ -3010,8 +3038,6 @@ async def remove_staff_role(interaction, role: discord.Role):
 set_slash.add_command(ticket_slash)
 set_slash.add_command(staff_slash)
 bot.tree.add_command(set_slash)
-
-# ---------- Start bot ----------
 
 async def main():
     token = TOKEN
