@@ -220,17 +220,15 @@ LOG_KIND_MAP = {
 }
 
 LOG_KIND_ALIASES = {
-    "الرسائل": "messages", "رسائل": "messages", "message": "messages",
-    "الرولات": "roles", "الرول": "roles", "roles": "roles", "role": "roles",
-    "الرومات": "channels", "الروم": "channels", "channels": "channels", "channel": "channels",
-    "الأسماء": "nickname", "الاسماء": "nickname", "الأسماء المستعارة": "nickname",
-    "الاسم": "nickname", "nick": "nickname", "nickname": "nickname",
-    "السيرفر": "server", "server": "server",
-    "الاداره": "admin", "الإدارة": "admin", "الادارة": "admin",
-    "admin": "admin", "moderation": "admin",
-    "الأعضاء": "members", "الاعضاء": "members", "members": "members",
-    "الصوت": "voice", "الفويس": "voice", "voice": "voice",
-    "all": "all", "الكل": "all", "جميع": "all", "كامل": "all",
+    "الرسائل": "messages", "رسائل": "messages", "message": "messages", "messages-log": "messages", "message-log": "messages",
+    "الرولات": "roles", "الرول": "roles", "roles": "roles", "role": "roles", "role-log": "roles", "roles-log": "roles",
+    "الرومات": "channels", "الروم": "channels", "channels": "channels", "channel": "channels", "channel-log": "channels", "channels-log": "channels",
+    "الأسماء": "nickname", "الاسماء": "nickname", "الأسماء المستعارة": "nickname", "الاسم": "nickname", "nick": "nickname", "nickname": "nickname", "nickname-log": "nickname", "nick-log": "nickname",
+    "السيرفر": "server", "server": "server", "server-log": "server",
+    "الاداره": "admin", "الإدارة": "admin", "الادارة": "admin", "admin": "admin", "moderation": "admin", "admin-log": "admin",
+    "الأعضاء": "members", "الاعضاء": "members", "members": "members", "member": "members", "members-log": "members", "member-log": "members",
+    "الصوت": "voice", "الفويس": "voice", "voice": "voice", "voice-log": "voice",
+    "all": "all", "الكل": "all", "جميع": "all", "كامل": "all", "all-logs": "all", "all-log": "all",
 }
 
 def normalize_log_kind(value):
@@ -255,15 +253,12 @@ async def send_log(guild, kind, title, description, color=0x5865F2):
     settings = log_settings(guild)
     ids = []
 
-    # قناة All Logs تستقبل كل الأحداث التي يستطيع البوت رصدها.
     if settings.get("all"):
         ids.append(int(settings["all"]))
 
-    # القناة الخاصة بنوع الحدث.
     if settings.get("types", {}).get(kind):
         ids.append(int(settings["types"][kind]))
 
-    # Server Logs تستقبل تغييرات بنية السيرفر، بالإضافة إلى قنواتها المتخصصة.
     if kind in {"roles", "channels"} and settings.get("types", {}).get("server"):
         ids.append(int(settings["types"]["server"]))
 
@@ -359,7 +354,7 @@ async def resolve_member_target(ctx, target=None):
 async def require_member_target(ctx, target=None):
     member = await resolve_member_target(ctx, target)
     if member is None:
-        await ctx.reply("منشن العضو أو رد على رسالته.", mention_author=False)
+        await ctx.reply("منشن الشخص أو رد على رسالته.", mention_author=False)
     return member
 
 async def hierarchy_check(ctx, member):
@@ -592,6 +587,145 @@ def message_snapshot_text(snapshot):
 
     lines.append(f"معرّف الرسالة: `{snapshot.get('message_id', 'غير معروف')}`")
     return "\n".join(lines)
+
+# ==========================================
+# HELP SYSTEM WITH OPTIONS & CLEAR PAGES
+# ==========================================
+
+HELP_SECTIONS = {
+    "rooms": {
+        "title": "إدارة الرومات والفويس",
+        "description": (
+            "`!close` / `!قفل` — قفل الكتابة في الروم\n"
+            "`!open` — فتح الكتابة في الروم\n"
+            "`!hide` — إخفاء الروم\n"
+            "`!unhide` — إظهار الروم\n"
+            "`!lockvc` / `!unlockvc` — قفل أو فتح روم صوتي\n"
+            "`!lockallvc` / `!unlockallvc` — قفل أو فتح جميع الفويسات\n"
+            "`!slowmode [ثواني]` — تحديد وضع البطء\n"
+            "`!addroom [اسم]` — إنشاء روم كتابي أو صوتي\n"
+            "`!delroom #روم` — حذف روم\n"
+            "`!lockserver` / `!openserver` — قفل أو فتح السيرفر بالكامل\n"
+            "`!kickvoice` — إخراج جميع الأعضاء من الفويس"
+        )
+    },
+    "moderation": {
+        "title": "الرسائل والإدارة والعقوبات",
+        "description": (
+            "`!مسح [عدد]` — حذف عدد من رسائل الروم الحالي\n"
+            "`!مسح @عضو` — حذف رسائل العضو من رومات السيرفر\n"
+            "`!برا @عضو` / `!kick @عضو` — طرد عضو (أو رد على رسالته)\n"
+            "`!ban @عضو [السبب]` — حظر عضو (أو رد على رسالته)\n"
+            "`!unban ID` — فك حظر عضو\n"
+            "`!timeout @عضو [دقائق]` — تطبيق تايم أوت\n"
+            "`!untime @عضو` — فك التايم أوت\n"
+            "`!mute @عضو [دقائق]` / `!unmute @عضو` — ميوت كتابي أو فكه\n"
+            "`!prison @عضو` / `!unprison @عضو` — سجن عضو أو فك سجنه\n"
+            "`!تل @عضو` — سحب جميع رولات العضو باستثناء DeTh\n"
+            "`!نك @عضو [الاسم]` — تغيير اسم العضو المستعار"
+        )
+    },
+    "roles": {
+        "title": "إدارة الرولات والأعضاء",
+        "description": (
+            "`!رول @عضو @رول` — إعطاء أو سحب رتبة من عضو\n"
+            "`!رول @رول_مصدر @رول_جديد` — توزيع رتبة لمن يملك رتبة أخرى\n"
+            "`!roleall @رول` — إعطاء رتبة لجميع الأعضاء\n"
+            "`!memberrole` — إعطاء رتبة DeTh لجميع الأعضاء\n"
+            "`!roleallremove @رول` — سحب رتبة من جميع الأعضاء"
+        )
+    },
+    "logs_settings": {
+        "title": "الإعدادات واللوقات (Logs)",
+        "description": (
+            "`!set all-logs #روم` — تسجيل جميع اللوقات في روم واحد\n"
+            "`!set members-log #روم` — تسجيل دخول وخروج الأعضاء\n"
+            "`!set role-log #روم` — تسجيل إعطاء، سحب، تعديل، أو حذف الرولات\n"
+            "`!set channel-log #روم` — تسجيل إنشاء، تعديل، أو حذف الرومات\n"
+            "`!set voice-log #روم` — تسجيل أحداث الفويس\n"
+            "`!set message-log #روم` — تسجيل الرسائل (إرسال، حذف، وتعديل قبل وبعد)\n"
+            "`!set admin-log #روم` — تسجيل إجراءات الإدارة\n"
+            "`!set nickname-log #روم` — تسجيل تغيير أو حذف الأسماء مع المنفذ والهدف\n"
+            "`!logs` — عرض رومات اللوقات المحددة\n"
+            "`!set welcome #روم` / `!set welcome text [النص]` — إعداد الترحيب\n"
+            "`!set locket #روم` / `!set images role @رول` — إعداد روم الصور ورتبتها\n"
+            "`!set mute role @رول` — تحديد رتبة الميوت\n"
+            "`!set prison room #روم` / `!set prison role @رول` — إعداد السجن\n"
+            "`!setpermission @رول [صلاحية]` / `!removepermission` / `!permissions`\n"
+            "`!set bad word [كلمة]` / `!set bad word remove [كلمة]` / `!words`"
+        )
+    },
+    "bot": {
+        "title": "إعدادات البوت ولوحات التحكم",
+        "description": (
+            "`!status [online/idle/dnd/invisible]` — تغيير حالة البوت\n"
+            "`!activity [النص]` — تغيير نشاط البوت\n"
+            "`!botavatar` — تغيير صورة البوت بإرفاق صورة\n"
+            "`!say [النص]` — إرسال رسالة باسم البوت\n"
+            "`/control` — فتح لوحة تحكم المالك في الخاص\n"
+            "`/set ticket room` — إعداد روم التذاكر\n"
+            "`/set staff role` / `/set staff remove` — إدارة رتب الإدارة"
+        )
+    }
+}
+
+def build_help_embed(section_key="rooms"):
+    section = HELP_SECTIONS.get(section_key, HELP_SECTIONS["rooms"])
+    embed = discord.Embed(
+        title=f"DeTh | {section['title']}",
+        description=section["description"],
+        color=0x5865F2
+    )
+    embed.set_footer(text="اختر قسماً من القائمة أو الأزرار لعرض أوامره بوضوح")
+    return embed
+
+class HelpCategorySelect(discord.ui.Select):
+    def __init__(self, author_id):
+        self.author_id = author_id
+        options = [
+            discord.SelectOption(label="إدارة الرومات والفويس", value="rooms", description="قفل، فتح، إخفاء، فويس، والسيرفر"),
+            discord.SelectOption(label="الرسائل والإدارة والعقوبات", value="moderation", description="مسح، طرد، باند، تايم أوت، ميوت، وسجن"),
+            discord.SelectOption(label="إدارة الرولات والأعضاء", value="roles", description="إعطاء، سحب، وتوزيع الرتب"),
+            discord.SelectOption(label="الإعدادات واللوقات", value="logs_settings", description="أوامر اللوقات، الترحيب، الصور، والصلاحيات"),
+            discord.SelectOption(label="إعدادات البوت والتذاكر", value="bot", description="الحالة، النشاط، الصورة، ولوحة التحكم"),
+        ]
+        super().__init__(placeholder="اختر قسم الأوامر...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.author_id:
+            return await interaction.response.send_message("هذه القائمة خاصة بمن طلب المساعدة.", ephemeral=True)
+        await interaction.response.edit_message(embed=build_help_embed(self.values[0]), view=self.view)
+
+class HelpMenuView(discord.ui.View):
+    def __init__(self, author_id):
+        super().__init__(timeout=180)
+        self.author_id = author_id
+        self.add_item(HelpCategorySelect(author_id))
+
+    async def _switch(self, interaction: discord.Interaction, key: str):
+        if interaction.user.id != self.author_id:
+            return await interaction.response.send_message("هذه الأزرار خاصة بمن طلب المساعدة.", ephemeral=True)
+        await interaction.response.edit_message(embed=build_help_embed(key), view=self)
+
+    @discord.ui.button(label="الرومات", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_rooms(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "rooms")
+
+    @discord.ui.button(label="الإدارة", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_mod(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "moderation")
+
+    @discord.ui.button(label="الرولات", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "roles")
+
+    @discord.ui.button(label="اللوقات", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_logs(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "logs_settings")
+
+    @discord.ui.button(label="البوت", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_bot(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "bot")
 
 class TicketCloseView(discord.ui.View):
     def __init__(self):
@@ -1048,7 +1182,7 @@ async def schedule_voice_unmute(guild_id, member_id, expires_at):
         try:
             if member and member.voice and member.voice.mute:
                 await member.edit(mute=False, reason="انتهاء مدة الميوت التلقائي")
-                await send_log(guild, "moderation", "انتهاء ميوت تلقائي", f"العضو: {member.mention}")
+                await send_log(guild, "admin", "انتهاء ميوت تلقائي", f"العضو: {member.mention}")
 
         except discord.HTTPException:
             log.exception("فشل فك الميوت التلقائي")
@@ -1239,11 +1373,29 @@ async def on_raw_message_edit(payload):
 @bot.event
 async def on_member_update(before, after):
     if before.nick != after.nick:
+        executor, _ = await audit_executor(
+            after.guild,
+            discord.AuditLogAction.member_update,
+            after.id
+        )
+        old_nick = before.nick if before.nick else "لا يوجد (الاسم الأساسي)"
+        new_nick = after.nick if after.nick else "تم حذفه / رجع للأساسي"
+        if after.nick is None and before.nick is not None:
+            change_type = "حذف النك نيم"
+        elif before.nick is None and after.nick is not None:
+            change_type = "إضافة نك نيم"
+        else:
+            change_type = "تعديل نك نيم"
+
         await send_log(
             after.guild,
             "nickname",
-            "تغيير اسم عضو",
-            f"العضو: {after.mention}\nقبل: {before.nick or before.name}\nبعد: {after.nick or after.name}"
+            change_type,
+            f"المنفذ: {executor.mention if executor else 'غير معروف'}\n"
+            f"على مين: {after.mention}\n"
+            f"نوع التغيير: {change_type}\n"
+            f"قبل: {old_nick}\n"
+            f"بعد: {new_nick}"
         )
 
     added = [r for r in after.roles if r not in before.roles and not r.is_default()]
@@ -1302,6 +1454,7 @@ async def on_guild_role_delete(role):
 
 @bot.event
 async def on_guild_role_update(before, after):
+    user, reason = await audit_executor(after.guild, discord.AuditLogAction.role_update, after.id)
     changes = []
 
     if before.name != after.name:
@@ -1310,8 +1463,16 @@ async def on_guild_role_update(before, after):
     if before.color != after.color:
         changes.append(f"اللون: {before.color} -- {after.color}")
 
+    if before.permissions != after.permissions:
+        changes.append("تم تعديل صلاحيات الرول.")
+
     if changes:
-        await send_log(after.guild, "roles", "تعديل رتبة", f"{after.mention}\n" + "\n".join(changes))
+        await send_log(
+            after.guild,
+            "roles",
+            "تعديل رتبة",
+            f"{after.mention}\nبواسطة: {user.mention if user else 'غير معروف'}\n" + "\n".join(changes)
+        )
 
 @bot.event
 async def on_guild_channel_create(channel):
@@ -1345,6 +1506,11 @@ async def on_guild_channel_delete(channel):
 
 @bot.event
 async def on_guild_channel_update(before, after):
+    user, reason = await audit_executor(
+        after.guild,
+        discord.AuditLogAction.channel_update,
+        after.id
+    )
     changes = []
 
     if before.name != after.name:
@@ -1354,7 +1520,12 @@ async def on_guild_channel_update(before, after):
         changes.append("تم تعديل وصف الروم.")
 
     if changes:
-        await send_log(after.guild, "channels", "تعديل روم", f"{after.mention}\n" + "\n".join(changes))
+        await send_log(
+            after.guild,
+            "channels",
+            "تعديل روم",
+            f"{after.mention}\nبواسطة: {user.mention if user else 'غير معروف'}\n" + "\n".join(changes)
+        )
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -1375,6 +1546,14 @@ async def on_voice_state_update(member, before, after):
             "voice",
             "تغيير Mute صوتي",
             f"العضو: {member.mention}\nالحالة: {'مكتوم' if after.mute else 'مفتوح'}"
+        )
+
+    if before.deaf != after.deaf:
+        await send_log(
+            member.guild,
+            "voice",
+            "تغيير Deafen صوتي",
+            f"العضو: {member.mention}\nالحالة: {'مصموت' if after.deaf else 'مفتوح'}"
         )
 
 @bot.event
@@ -1512,7 +1691,7 @@ async def on_command_error(ctx, error):
         await ctx.reply(f"ناقصك إدخال: `{error.param.name}`", mention_author=False)
 
     elif isinstance(error, commands.BadArgument):
-        await ctx.reply("المدخل غير صحيح، تأكد من منشن العضو أو الرول.", mention_author=False)
+        await ctx.reply("منشن الشخص أو رد على رسالته.", mention_author=False)
 
     elif isinstance(error, commands.MissingPermissions):
         await ctx.reply("ما عندك الصلاحية المطلوبة.", mention_author=False)
@@ -1526,47 +1705,11 @@ async def on_command_error(ctx, error):
 
 @bot.command(name="help", aliases=["مساعدة", "اوامر"])
 async def help_command(ctx):
-    description = (
-        "إدارة الرومات\n"
-        "!close / !قفل — قفل الكتابة | !open — فتح الروم\n"
-        "!hide — إخفاء الروم | !unhide — إظهار الروم\n"
-        "!lockvc / !unlockvc — قفل أو فتح فويس\n"
-        "!lockallvc / !unlockallvc — قفل أو فتح كل الفويسات\n"
-        "!slowmode [ثواني] — ضبط البطء | !addroom [اسم] — إنشاء روم\n"
-        "!delroom #روم — حذف روم | !lockserver / !openserver — قفل أو فتح السيرفر\n"
-        "!kickvoice تأكيد — إخراج الموجودين من الفويس\n\n"
-        "الرسائل والإدارة\n"
-        "!مسح [عدد] — حذف عدد من رسائل الروم\n"
-        "!مسح @عضو تأكيد — حذف رسائل العضو من رومات السيرفر\n"
-        "!برا @عضو / !kick @عضو — طرد | !ban @عضو — حظر\n"
-        "!unban ID — فك الحظر | !timeout @عضو [دقائق] — تايم أوت\n"
-        "!untime @عضو — فك التايم أوت | !mute / !unmute — ميوت كتابي\n"
-        "!prison / !unprison @عضو — سجن أو فك السجن\n"
-        "!تل @عضو — سحب رولات العضو عدا DeTh | !نك @عضو [اسم] — تغيير الاسم\n\n"
-        "الرولات\n"
-        "!رول @عضو @رول — إعطاء أو سحب رتبة | !roleall @رول — إعطاء للجميع\n"
-        "!memberrole — إعطاء رتبة DeTh لجميع الأعضاء\n"
-        "!roleallremove @رول تأكيد — سحب رتبة من الجميع\n\n"
-        "الإعدادات واللوقات\n"
-        "!set welcome #روم | !set welcome text [النص] — إعداد الترحيب\n"
-        "!set locket #روم | !set images role @رول — إعداد روم الصور ورتبتها\n"
-        "!set log [messages/roles/channels/nickname/server/admin/members/voice] #روم\n"
-        "!set log all #روم — استقبال كل اللوقات | !logs — عرض الإعدادات\n"
-        "!set log reset — إعادة ضبط اللوقات\n"
-        "!set mute role @رول — تحديد رتبة الميوت\n"
-        "!set prison room #روم | !set prison role @رول — إعداد السجن\n"
-        "!set images role @رول — تحديد رتبة الصور\n"
-        "!setpermission @رول [صلاحية] — منح صلاحية | !removepermission — سحبها\n"
-        "!permissions — عرض الصلاحيات | !words — الكلمات المحظورة\n"
-        "!set bad word [كلمة] — إضافة كلمة | !set bad word remove [كلمة] — حذفها\n\n"
-        "البوت\n"
-        "!status [online/idle/dnd/invisible] — الحالة | !activity [نص] — النشاط\n"
-        "!botavatar — تغيير صورة البوت | !say [نص] — إرسال رسالة باسم البوت\n"
-        "/control — لوحة تحكم المالك | /set ticket room — إعداد التكت\n"
-        "/set staff role — إضافة رتبة إدارة | /set staff remove — حذفها"
+    await ctx.reply(
+        embed=build_help_embed("rooms"),
+        view=HelpMenuView(ctx.author.id),
+        mention_author=False
     )
-    embed = discord.Embed(title="DeTh | الأوامر", description=description, color=0x5865F2)
-    await ctx.reply(embed=embed, mention_author=False)
 
 @bot.command(name="close", aliases=["قفل", "lock"])
 async def close_channel(ctx):
@@ -1707,7 +1850,7 @@ async def slowmode(ctx, seconds: int = 5):
         await ctx.reply("البوت يحتاج Manage Channels.", mention_author=False)
 
 @bot.command(name="مسح", aliases=["clear", "purge"])
-async def clear_messages(ctx, target_or_amount: str = "30", confirmation: str = None):
+async def clear_messages(ctx, target_or_amount: str = "30"):
     if not await staff_check(ctx, "clear"):
         return
     if not ctx.author.guild_permissions.manage_messages and not is_owner(ctx.author):
@@ -1715,23 +1858,13 @@ async def clear_messages(ctx, target_or_amount: str = "30", confirmation: str = 
     if not ctx.guild.me.guild_permissions.manage_messages:
         return await ctx.reply("البوت يحتاج Manage Messages.", mention_author=False)
 
-    # إذا كان الإدخال منشن عضو أو ID، امسح رسائله من جميع الرومات بعد تأكيد صريح.
-    try:
-        target_member = await commands.MemberConverter().convert(ctx, target_or_amount)
-    except commands.BadArgument:
-        target_member = None
+    target_member = await resolve_member_target(ctx, target_or_amount)
 
     if target_member is not None:
-        if confirmation != "تأكيد":
-            return await ctx.reply(
-                f"سيتم حذف رسائل {target_member.mention} من جميع الرومات التي يستطيع البوت قراءتها.\n"
-                f"للتأكيد: `!مسح {target_member.mention} تأكيد`",
-                mention_author=False
-            )
         if target_member.bot:
             return await ctx.reply("لا يمكن استخدام الأمر على البوتات.", mention_author=False)
 
-        await ctx.reply("بدأ حذف رسائل العضو.", mention_author=False)
+        await ctx.reply(f"جاري حذف رسائل {target_member.mention} من رومات السيرفر.", mention_author=False)
         deleted_count = 0
         failed_channels = 0
         for channel in ctx.guild.text_channels:
@@ -1753,14 +1886,14 @@ async def clear_messages(ctx, target_or_amount: str = "30", confirmation: str = 
                 failed_channels += 1
 
         await ctx.send(
-            f"انتهى الحذف. الرسائل المحذوفة: `{deleted_count}`. الرومات التي تعذر فحصها أو الحذف منها: `{failed_channels}`."
+            f"تم حذف رسائل {target_member.mention}. المحذوفة: `{deleted_count}` | رومات تعذر فحصها: `{failed_channels}`."
         )
         return
 
     try:
         amount = int(target_or_amount)
     except (TypeError, ValueError):
-        return await ctx.reply("اكتب عددًا أو منشن عضو.", mention_author=False)
+        return await ctx.reply("منشن الشخص أو رد على رسالته أو اكتب عددًا.", mention_author=False)
     if not 1 <= amount <= 100:
         return await ctx.reply("حدد عددًا من 1 إلى 100.", mention_author=False)
     try:
@@ -1801,14 +1934,14 @@ async def strip_member_roles(ctx, member):
     names = ", ".join(r.name for r in removable)
 
     await ctx.reply(
-        f"تم سحب رولات {member.mention}: {names}\nتم استثناء ZeTh."
+        f"تم سحب رولات {member.mention}: {names}\nتم استثناء DeTh."
         + (f"\nتم تخطي: {', '.join(skipped)}" if skipped else ""),
         mention_author=False
     )
 
     await send_log(
         ctx.guild,
-        "moderation",
+        "admin",
         "سحب رولات",
         f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}\nالرولات: {names}"
     )
@@ -1822,14 +1955,10 @@ async def strip_roles(ctx, member: str = None):
 @bot.command(name="برا")
 async def kick_or_strip(ctx, *, args=""):
     if args.casefold().startswith("رولاتك"):
-        try:
-            member = await commands.MemberConverter().convert(
-                ctx,
-                args[len("رولاتك"):].strip()
-            )
-        except commands.BadArgument:
-            return await ctx.reply("استخدم: `!برا رولاتك @عضو`", mention_author=False)
-
+        target_arg = args[len("رولاتك"):].strip() or None
+        member = await require_member_target(ctx, target_arg)
+        if not member:
+            return
         return await strip_member_roles(ctx, member)
 
     parts = args.split(maxsplit=1)
@@ -1842,7 +1971,7 @@ async def kick_or_strip(ctx, *, args=""):
     else:
         member = await resolve_member_target(ctx, parts[0])
         if not member:
-            return await ctx.reply("العضو غير موجود. منشنه أو رد على رسالته.", mention_author=False)
+            return await ctx.reply("منشن الشخص أو رد على رسالته.", mention_author=False)
         reason = parts[1] if len(parts) > 1 else "بدون سبب"
 
     if not await staff_check(ctx, "kick"):
@@ -1859,7 +1988,7 @@ async def kick_or_strip(ctx, *, args=""):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "طرد عضو",
             f"المنفذ: {ctx.author.mention}\nالعضو: {member}\nالسبب: {reason}"
         )
@@ -1880,7 +2009,7 @@ async def do_ban(ctx, member, reason):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "حظر عضو",
             f"المنفذ: {ctx.author.mention}\nالعضو: {member}\nالسبب: {reason}"
         )
@@ -1911,7 +2040,7 @@ async def kick_member(ctx, member: str = None, *, reason="بدون سبب"):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "طرد عضو",
             f"المنفذ: {ctx.author.mention}\nالعضو: {member}\nالسبب: {reason}"
         )
@@ -1981,7 +2110,7 @@ async def schedule_chat_unmute(guild_id, member_id, expires_at):
             role = guild.get_role(int(role_id)) if guild and role_id else None
             if member and role and role in member.roles:
                 await member.remove_roles(role, reason="انتهاء مدة الميوت الكتابي")
-                await send_log(guild, "moderation", "انتهاء الميوت الكتابي", f"العضو: {member.mention}")
+                await send_log(guild, "admin", "انتهاء الميوت الكتابي", f"العضو: {member.mention}")
         except discord.HTTPException:
             log.exception("فشل فك الميوت الكتابي تلقائيًا")
         finally:
@@ -2023,7 +2152,7 @@ async def do_chat_mute(ctx, member, minutes, reason, mute):
 
             save_data()
             await ctx.reply(f"تم ميوت {member.mention} كتابيًا {duration_text}.", mention_author=False)
-            await send_log(ctx.guild, "moderation", "ميوت كتابي", f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}\nالمدة: {duration_text}\nالسبب: {reason}")
+            await send_log(ctx.guild, "admin", "ميوت كتابي", f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}\nالمدة: {duration_text}\nالسبب: {reason}")
         else:
             if role in member.roles:
                 await member.remove_roles(role, reason=f"Chat unmuted by {ctx.author}")
@@ -2033,7 +2162,7 @@ async def do_chat_mute(ctx, member, minutes, reason, mute):
                 task.cancel()
             save_data()
             await ctx.reply(f"تم فك الميوت عن {member.mention}.", mention_author=False)
-            await send_log(ctx.guild, "moderation", "فك الميوت الكتابي", f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}")
+            await send_log(ctx.guild, "admin", "فك الميوت الكتابي", f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}")
     except discord.Forbidden:
         await ctx.reply("تأكد أن رتبة البوت أعلى من رتبة الميوت والعضو.", mention_author=False)
     except discord.HTTPException:
@@ -2088,7 +2217,7 @@ async def timeout_member(ctx, member: str = None, minutes: int = 10, *, reason="
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "Timeout عضو",
             f"المنفذ: {ctx.author.mention}\n"
             f"العضو: {member.mention}\n"
@@ -2113,7 +2242,7 @@ async def untimeout_member(ctx, member: str = None):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "فك Timeout",
             f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}"
         )
@@ -2157,7 +2286,7 @@ async def prison_member(ctx, member: str = None, *, reason="بدون سبب"):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "سجن عضو",
             f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}\nالسبب: {reason}"
         )
@@ -2207,7 +2336,7 @@ async def unprison_member(ctx, member: str = None):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "فك سجن عضو",
             f"المنفذ: {ctx.author.mention}\nالعضو: {member.mention}"
         )
@@ -2231,7 +2360,7 @@ async def unban_member(ctx, user_id: int, *, reason="بدون سبب"):
 
         await send_log(
             ctx.guild,
-            "moderation",
+            "admin",
             "فك حظر عضو",
             f"المنفذ: {ctx.author.mention}\nالمستخدم: `{user}`\nالسبب: {reason}"
         )
@@ -2384,9 +2513,7 @@ async def toggle_role(ctx, *, targets=None):
         return
 
     await ctx.reply(
-        "الاستخدام غير صحيح.\n"
-        "استخدم !رول @عضو @رول أو !رول @عضو اسم الرول "
-        "أو منشن رولين للتوزيع.",
+        "منشن الشخص أو رد على رسالته.",
         mention_author=False
     )
 
@@ -2504,11 +2631,9 @@ async def delete_room(ctx, *, channel_query):
         await ctx.reply("تعذر حذف الروم.", mention_author=False)
 
 @bot.command(name="kickvoice", aliases=["طرد_الفويس", "فصل_الفويس"])
-async def kick_all_voice(ctx, confirmation=None):
+async def kick_all_voice(ctx):
     if not await staff_check(ctx, "voice"):
         return
-    if str(confirmation).casefold() not in ("confirm", "تأكيد", "تاكيد"):
-        return await ctx.reply("لتأكيد إخراج جميع الموجودين بالفويس اكتب: `!kickvoice تأكيد`.", mention_author=False)
     if not ctx.guild.me.guild_permissions.move_members:
         return await ctx.reply("البوت يحتاج Move Members.", mention_author=False)
     members = [m for vc in ctx.guild.voice_channels + ctx.guild.stage_channels for m in list(vc.members)]
@@ -2522,11 +2647,9 @@ async def kick_all_voice(ctx, confirmation=None):
     await ctx.reply(f"تم إخراج {done} عضو من الفويس. تعذر: {failed}.", mention_author=False)
 
 @bot.command(name="lockserver", aliases=["قفل_السيرفر", "قفل_الكل"])
-async def lock_server(ctx, confirmation=None):
+async def lock_server(ctx):
     if not await staff_check(ctx, "server"):
         return
-    if str(confirmation).casefold() not in ("confirm", "تأكيد", "تاكيد"):
-        return await ctx.reply("لتأكيد قفل الكتابة والفويس في الرومات اكتب: `!lockserver تأكيد`.", mention_author=False)
     if not ctx.guild.me.guild_permissions.manage_channels:
         return await ctx.reply("البوت يحتاج Manage Channels.", mention_author=False)
 
@@ -2591,9 +2714,7 @@ async def unlock_server(ctx):
 async def remove_role_all(ctx, *, query=None):
     if not await staff_check(ctx, "remove_role"):
         return
-    if not query or not re.search(r"(?:^|\s)(?:confirm|تأكيد|تاكيد)$", query, re.IGNORECASE):
-        return await ctx.reply("لتأكيد سحب الرتبة من الجميع اكتب: `!roleallremove @رول تأكيد`.", mention_author=False)
-    query = re.sub(r"\s+(?:confirm|تأكيد|تاكيد)$", "", query, flags=re.IGNORECASE).strip()
+    query = re.sub(r"\s+(?:confirm|تأكيد|تاكيد)$", "", (query or ""), flags=re.IGNORECASE).strip()
     matches = find_role_matches(ctx.guild, query) if query else []
     if len(matches) != 1:
         return await ctx.reply("حدد رولًا واحدًا صحيحًا بالمنشن أو الاسم.", mention_author=False)
@@ -2772,8 +2893,30 @@ async def control_panel(interaction):
             ephemeral=True
         )
 
+async def _save_log_channel(ctx, raw_kind, channel: discord.TextChannel):
+    if not await owner_check(ctx):
+        return
+
+    key = normalize_log_kind(raw_kind)
+    if key != "all" and key not in LOG_NAMES:
+        return await ctx.reply("قسم اللوق غير معروف.", mention_author=False)
+
+    settings = log_settings(ctx.guild)
+    if key == "all":
+        settings["all"] = channel.id
+        label = "all-logs"
+    else:
+        settings.setdefault("types", {})[key] = channel.id
+        label = f"{key}-log"
+    save_data()
+    await ctx.reply(f"تم تحديد `{label}` في {channel.mention}.", mention_author=False)
+
 @commands.group(name="set", aliases=["ضبط"], invoke_without_command=True)
-async def set_group(ctx):
+async def set_group(ctx, target: str = None, channel: discord.TextChannel = None):
+    if target and channel:
+        normalized = normalize_log_kind(target)
+        if normalized == "all" or normalized in LOG_NAMES:
+            return await _save_log_channel(ctx, target, channel)
     await ctx.reply("هذا الأمر غير متوفر.", mention_author=False)
 
 @set_group.command(name="welcome", aliases=["ترحيب"])
@@ -2831,22 +2974,10 @@ async def set_log(ctx, target=None, channel: discord.TextChannel = None):
     if not target:
         return await ctx.reply("هذا الأمر غير متوفر.", mention_author=False)
 
-    key = normalize_log_kind(target)
-    if key != "all" and key not in LOG_NAMES:
-        return await ctx.reply("قسم اللوق غير معروف.", mention_author=False)
-
     if channel is None:
         return await ctx.reply("حدد رومًا للقسم.", mention_author=False)
 
-    settings = log_settings(ctx.guild)
-    if key == "all":
-        settings["all"] = channel.id
-        label = "All Logs"
-    else:
-        settings.setdefault("types", {})[key] = channel.id
-        label = LOG_NAMES[key]
-    save_data()
-    await ctx.reply(f"تم تحديد {label} في {channel.mention}.", mention_author=False)
+    await _save_log_channel(ctx, target, channel)
 
 @set_log.command(name="reset")
 async def reset_logs(ctx):
@@ -2858,6 +2989,39 @@ async def reset_logs(ctx):
 
     await ctx.reply("تمت إعادة ضبط اللوق.", mention_author=False)
 
+# أوامر مباشرة للوقات بالأسماء المطلوبة
+@set_group.command(name="all-logs", aliases=["all_logs", "all-log"])
+async def set_all_logs_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "all", channel)
+
+@set_group.command(name="members-log", aliases=["members_log", "member-log"])
+async def set_members_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "members", channel)
+
+@set_group.command(name="role-log", aliases=["role_log", "roles-log"])
+async def set_role_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "roles", channel)
+
+@set_group.command(name="channel-log", aliases=["channel_log", "channels-log"])
+async def set_channel_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "channels", channel)
+
+@set_group.command(name="voice-log", aliases=["voice_log"])
+async def set_voice_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "voice", channel)
+
+@set_group.command(name="message-log", aliases=["message_log", "messages-log"])
+async def set_message_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "messages", channel)
+
+@set_group.command(name="admin-log", aliases=["admin_log"])
+async def set_admin_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "admin", channel)
+
+@set_group.command(name="nickname-log", aliases=["nickname_log", "nick-log"])
+async def set_nickname_log_cmd(ctx, channel: discord.TextChannel):
+    await _save_log_channel(ctx, "nickname", channel)
+
 @bot.command(name="logs")
 async def show_logs(ctx):
     if not await owner_check(ctx):
@@ -2867,7 +3031,7 @@ async def show_logs(ctx):
     lines = [
         "إعدادات اللوقات",
         "------------------------------",
-        f"All Logs: {ctx.guild.get_channel(int(settings['all'])).mention if settings.get('all') and ctx.guild.get_channel(int(settings['all'])) else 'غير محدد'}",
+        f"all-logs: {ctx.guild.get_channel(int(settings['all'])).mention if settings.get('all') and ctx.guild.get_channel(int(settings['all'])) else 'غير محدد'}",
         "الأقسام",
         ""
     ]
@@ -2876,7 +3040,7 @@ async def show_logs(ctx):
         cid = settings.get("types", {}).get(key)
         channel = ctx.guild.get_channel(int(cid)) if cid else None
         lines.extend([
-            label,
+            f"{label} (`{key}-log`)",
             f"الروم: {channel.mention if channel else 'غير محدد'}",
             ""
         ])
