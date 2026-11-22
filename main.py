@@ -1562,8 +1562,8 @@ async def on_member_unban(guild, user):
 async def on_guild_emojis_update(guild, before, after):  
     before_ids = {item.id for item in before}  
     after_ids = {item.id for item in after}  
-    added = item.name for item in after if [item.id not in before_ids]  
-    removed = item.name for item in before if [item.id not in after_ids]  
+    added = [item.name for item in after if item.id not in before_ids]  
+    removed = [item.name for item in before if item.id not in after_ids]  
     if added or removed:  
         await send_log(guild, "server", "تغيير إيموجيات السيرفر", f"المضافة: {', '.join(added) or 'لا يوجد'}\nالمحذوفة: {', '.join(removed) or 'لا يوجد'}")  
   
@@ -1571,8 +1571,8 @@ async def on_guild_emojis_update(guild, before, after):
 async def on_guild_stickers_update(guild, before, after):  
     before_ids = {item.id for item in before}  
     after_ids = {item.id for item in after}  
-    added = item.name for item in after if [item.id not in before_ids]  
-    removed = item.name for item in before if [item.id not in after_ids]  
+    added = [item.name for item in after if item.id not in before_ids]  
+    removed = [item.name for item in before if item.id not in after_ids]  
     if added or removed:  
         await send_log(guild, "server", "تغيير ملصقات السيرفر", f"المضافة: {', '.join(added) or 'لا يوجد'}\nالمحذوفة: {', '.join(removed) or 'لا يوجد'}")  
   
@@ -2068,7 +2068,7 @@ async def get_muted_role(guild):
         role = await guild.create_role(name="Muted", reason="Chat mute role")  
   
     await configure_chat_mute_role(guild, role)  
-    data["muted_roles"]str([guild.id)] = str(role.id)  
+    data["muted_roles"][str(guild.id)] = str(role.id)  
     save_data()  
     return role  
   
@@ -2255,8 +2255,8 @@ async def prison_member(ctx, member: str = None, *, reason="بدون سبب"):
         return await ctx.reply("إعدادات السجن غير مكتملة. حدد رول السجن وروم السجن.", mention_author=False)  
   
     try:  
-        saved_roles = str([r.id) for r in member.roles if not r.is_default() and not r.managed and r != role]  
-        data.setdefault("prison_saved_roles", {})f"{[ctx.guild.id}:{member.id}"] = saved_roles  
+        saved_roles = [str(r.id) for r in member.roles if not r.is_default() and not r.managed and r != role]  
+        data.setdefault("prison_saved_roles", {})[f"{ctx.guild.id}:{member.id}"] = saved_roles  
         removable = [r for r in member.roles if not r.is_default() and not r.managed and r != role and r < ctx.guild.me.top_role]  
         if removable:  
             await member.remove_roles(*removable, reason=f"Prison role isolation by {ctx.author}")  
@@ -2927,7 +2927,7 @@ async def set_locket(ctx, channel: discord.TextChannel):
     if not await owner_check(ctx):  
         return  
   
-    data["locket_channels"]str([ctx.guild.id)] = channel.id  
+    data["locket_channels"][str(ctx.guild.id)] = channel.id  
     image_role_id = data.get("image_roles", {}).get(str(ctx.guild.id))  
     image_role = ctx.guild.get_role(int(image_role_id)) if image_role_id else None  
     try:  
@@ -3088,7 +3088,7 @@ async def set_mute_role(ctx, role: discord.Role):
     if role.is_default() or role.managed:  
         return await ctx.reply("هذا الرول غير صالح.", mention_author=False)  
   
-    data["muted_roles"]str([ctx.guild.id)] = str(role.id)  
+    data["muted_roles"][str(ctx.guild.id)] = str(role.id)  
     try:  
         await configure_chat_mute_role(ctx.guild, role)  
     except discord.Forbidden:  
@@ -3108,7 +3108,7 @@ async def set_images_role(ctx, role: discord.Role):
     ok, err = role_check(ctx, role)  
     if not ok:  
         return await ctx.reply(err, mention_author=False)  
-    data.setdefault("image_roles", {})str([ctx.guild.id)] = str(role.id)  
+    data.setdefault("image_roles", {})[str(ctx.guild.id)] = str(role.id)  
     save_data()  
     channel_id = data.get("locket_channels", {}).get(str(ctx.guild.id))  
     channel = ctx.guild.get_channel(int(channel_id)) if channel_id else None  
@@ -3127,7 +3127,7 @@ async def set_prison(ctx):
 async def set_prison_room(ctx, channel: discord.TextChannel):  
     if not await owner_check(ctx):  
         return  
-    data.setdefault("prison_channels", {})str([ctx.guild.id)] = str(channel.id)  
+    data.setdefault("prison_channels", {})[str(ctx.guild.id)] = str(channel.id)  
     save_data()  
     configured = await configure_prison_access(ctx.guild)  
     note = " وتم ضبط صلاحيات الرول." if configured else " حدد رول السجن أيضًا حتى يضبط البوت صلاحياته."  
@@ -3150,7 +3150,7 @@ async def set_prison_role(ctx, role: discord.Role):
     if any(getattr(role.permissions, name, False) for name in dangerous_prison_permissions):  
         return await ctx.reply("رول السجن يحتوي صلاحيات إدارية. استخدم رولًا عاديًا بدون صلاحيات إدارة.", mention_author=False)  
   
-    data["prison_roles"]str([ctx.guild.id)] = str(role.id)  
+    data["prison_roles"][str(ctx.guild.id)] = str(role.id)  
     save_data()  
     configured = await configure_prison_access(ctx.guild)  
     note = " وتم ضبط الروم بحيث لا يرى السجين إلا روم السجن." if configured else " حدد روم السجن باستخدام `!set prison room #روم`."  
@@ -3183,7 +3183,7 @@ async def set_ticket_room(interaction, channel: discord.TextChannel):
             reason="Ticket panel"  
         )  
   
-        data["ticket_rooms"]str([guild.id)] = channel.id  
+        data["ticket_rooms"][str(guild.id)] = channel.id  
         save_data()  
   
         embed = discord.Embed(  
@@ -3235,8 +3235,8 @@ async def remove_staff_role(interaction, role: discord.Role):
   
     roles = data["staff_roles"].setdefault(str(interaction.guild.id), [])  
   
-    data["staff_roles"]str([interaction.guild.id)] =   
-        x for x in roles if x != str([role.id)  
+    data["staff_roles"][str(interaction.guild.id)] = [  
+        x for x in roles if x != str(role.id)  
     ]  
   
     save_data()  
@@ -3254,7 +3254,7 @@ async def main():
     token = TOKEN  
   
     if not token:  
-        raise RuntimeError("اكتب توكن البوت داخل TOKEN أعلى الملف.")  
+        raise RuntimeError("ضع توكن البوت في متغير TOKEN.")  
   
     async with bot:  
         await bot.start(token)  
